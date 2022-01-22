@@ -1,0 +1,109 @@
+---
+title: "Something"
+author: "Rishabh Parsuram (rkp3)"
+date: "1/19/2022"
+output: html_document
+---
+
+[**Source**](https://github.com/owid/covid-19-data/blob/master/public/data/README.md)
+
+**Application goal:** The goal is to create an app that will output plots for cases/deaths based on certain information provided, like country names. It should also output various statistics based on what the user wants to find out (or maybe it'll just output those regardless). 
+
+**Tasks:** Take two countries as input, and create datasets that are subsets of the original data based on what the countries are (filter makes the most sense, need `dplyr` for that). It might be beneficial to restrict to only countries with an existing continent. This is essentially the logic behind the application. Create overlaying plots with a legend that visually compares the rates of rising cases/deaths. Also find a way to list out comparisons for the other metrics (that will be simple to find, since it's just the same number copied over) in a neat and organized way.
+
+Viewing the data:
+```{r}
+covid_data = read.csv("owid-covid-data.csv")
+```
+
+Some adjustments:
+```{r}
+covid_data$date = as.Date(covid_data$date, format = "%Y-%m-%d")
+```
+
+
+```{r}
+# Getting list of countries in dataset
+unique(covid_data$location)
+```
+
+```{r}
+# List of continents
+unique(covid_data$continent)
+```
+
+`ggplot2` version: 
+```{r}
+#install.packages("ggplot2")
+library(ggplot2)
+library(dplyr)
+
+
+graph_function = function(first_country, second_country) {
+  # Filtering the original dataset into smaller specific country datasets.
+  first_country_df = filter(covid_data, location == first_country) 
+  second_country_df = filter(covid_data, location == second_country)
+  
+  # Finding the earliest possible date in both country datasets. The index of 1 is because the data is ordered from earliest date to latest, so the first index has the earliest date.
+  first_date = max(first_country_df$date[1], second_country_df$date[1]) 
+  
+  # The index at which this date is located for each dataset. One of these values is going to be 1, in which case, just ignore it. We want to "chop off" values from the one with more dates.
+  first_ind = which(first_country_df$date == first_date)
+  second_ind = which(second_country_df$date == first_date) 
+  
+  # This code will "chop" whichever data frame doesn't match, which will equalize the number of rows in each dataframe.
+  if(first_ind != 1) {
+    first_revised = first_country_df[first_ind:nrow(first_country_df), ]
+    second_revised = second_country_df
+  } else {
+    first_revised = first_country_df
+    second_revised = second_country_df[second_ind:nrow(second_country_df), ]
+  }
+  
+  # Now we can use the revised data frame and the original (whichever one it is) to make an overlapping graph
+  date = first_revised$date # We can choose whichever one we want, since remember, we went through the process of making sure each dataset starts and ends with the same date.
+  first_val = first_revised$total_cases
+  second_val = second_revised$total_cases
+  df = data.frame(date, first_val, second_val)
+  
+  ggplot(df, aes(date)) +
+    geom_line(aes(y = first_val, color = "red")) +
+    geom_line(aes(y = second_val, color = "blue")) +
+    ylab("Total Cases") + xlab("Date") + ggtitle(paste("Total Cases by Date for ", first_country, " vs ", second_country)) +
+    scale_color_identity(
+      name = "Countries",
+      breaks = c("red", "blue"),
+      labels = c(first_country, second_country),
+      guide = "legend")
+}
+
+
+graph_function("France", "United States")
+#ggplot(us_data, aes(x = min_date)) + 
+  #geom_line(aes(y = india_data$total_cases), color = "green") +
+  #geom_line(aes(y = us_data$total_cases), color = "red")
+```
+
+Metrics comparison:
+```{r}
+metrics_comp = function(first_country, second_country){
+   # Filtering the original dataset into smaller specific country datasets.
+  first_country_df = filter(covid_data, location == first_country) 
+  second_country_df = filter(covid_data, location == second_country)
+  
+  # Getting the latest metrics
+  first_country_metrics = first_country_df[nrow(first_country_df), 48:63]
+  second_country_metrics = second_country_df[nrow(second_country_df), 48:63]
+  
+  # Accounting for NAs by replacing with zeros
+  first_country_metrics[is.na(first_country_metrics)] = 0
+  second_country_metrics[is.na(second_country_metrics)] = 0
+  metrics_matrix = rbind(first_country_metrics, second_country_metrics)
+  #metrics_matrix = t(as.matrix(rbind(first_country_metrics, second_country_metrics)))
+  rownames(metrics_matrix) = make.names(c(first_country, second_country), unique = TRUE)
+  t(metrics_matrix)
+}
+
+metrics_comp("United States", "India")
+```
+
